@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Camera</string>
+    <string name="camera_permission_confirmation">摄像头权限确认</string>
+    <string name="camera_permission_not_granted">摄像头权限没被获取</string>
+</resources>
