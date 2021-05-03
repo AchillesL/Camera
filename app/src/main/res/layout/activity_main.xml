@@ -3,30 +3,29 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:background="@android:color/black"
     android:orientation="vertical"
     tools:context=".MainActivity">
 
-    <com.bifan.detectlib.FaceDetectView
-        android:id="@+id/faceDetectView"
-        android:layout_width="250dp"
-        android:layout_height="250dp"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="100dp"
-        android:background="#aaaaaaaa" />
+    <io.fotoapparat.facedetector.view.CameraOverlayLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
 
-    <TextView
-        android:id="@+id/tvName"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignLeft="@id/faceDetectView"
-        android:layout_alignBottom="@id/faceDetectView"
-        android:layout_marginLeft="20dp"
-        android:layout_marginBottom="20dp"
-        android:background="#33333333"
-        android:padding="2dp"
-        android:text="梁增国"
-        android:textColor="@android:color/white"
-        android:textSize="16sp" />
+        <!-- Adjust parameters as you like. But cameraView has to be inside CameraOverlayLayout -->
+        <io.fotoapparat.view.CameraView
+            android:id="@+id/cameraView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- This view will display detected faces -->
+        <io.fotoapparat.facedetector.view.RectanglesView
+            android:id="@+id/rectanglesView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            app:rectanglesColor="@android:color/white"
+            app:rectanglesStrokeWidth="2dp"/>
+
+    </io.fotoapparat.facedetector.view.CameraOverlayLayout>
 
 </RelativeLayout>
