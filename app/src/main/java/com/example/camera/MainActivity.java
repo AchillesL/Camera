@@ -1,111 +1,132 @@
 package com.example.camera;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.hardware.Camera;
-import android.media.FaceDetector;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 
-import androidx.annotation.StringRes;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import androidx.fragment.app.DialogFragment;
 
-import com.bifan.detectlib.FaceDetectTextureView;
-import com.bifan.detectlib.FaceDetectView;
+import java.util.List;
+
+import io.fotoapparat.Fotoapparat;
+import io.fotoapparat.FotoapparatSwitcher;
+import io.fotoapparat.facedetector.Rectangle;
+import io.fotoapparat.facedetector.processor.FaceDetectorProcessor;
+import io.fotoapparat.facedetector.view.RectanglesView;
+import io.fotoapparat.parameter.LensPosition;
+import io.fotoapparat.view.CameraView;
+
+import static io.fotoapparat.log.Loggers.fileLogger;
+import static io.fotoapparat.log.Loggers.logcat;
+import static io.fotoapparat.log.Loggers.loggers;
+import static io.fotoapparat.parameter.selector.LensPositionSelectors.lensPosition;
 
 public class MainActivity extends AppCompatActivity {
 
-    private FaceDetectView faceDetectView;
+    private final PermissionsDelegate permissionsDelegate = new PermissionsDelegate(this);
+    private boolean hasCameraPermission;
+    private CameraView cameraView;
+    private RectanglesView rectanglesView;
+
+    private FotoapparatSwitcher fotoapparatSwitcher;
+    private Fotoapparat frontFotoapparat;
+    private Fotoapparat backFotoapparat;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        faceDetectView = findViewById(R.id.faceDetectView);
 
-        faceDetectView.setFramePreViewListener(new FaceDetectTextureView.IFramePreViewListener() {
+        cameraView = (CameraView) findViewById(R.id.camera_view);
+        rectanglesView = (RectanglesView) findViewById(R.id.rectanglesView);
+        hasCameraPermission = permissionsDelegate.hasCameraPermission();
+
+        if (hasCameraPermission) {
+            cameraView.setVisibility(View.VISIBLE);
+        } else {
+            permissionsDelegate.requestCameraPermission();
+        }
+
+        frontFotoapparat = createFotoapparat(LensPosition.FRONT);
+        backFotoapparat = createFotoapparat(LensPosition.BACK);
+        fotoapparatSwitcher = FotoapparatSwitcher.withDefault(backFotoapparat);
+
+        View switchCameraButton = findViewById(R.id.switchCamera);
+        switchCameraButton.setVisibility(
+                canSwitchCameras()
+                        ? View.VISIBLE
+                        : View.GONE
+        );
+        switchCameraButton.setOnClickListener(new View.OnClickListener() {
             @Override
-            public boolean onFrame(Bitmap eachFrame) {
-
-                return false;
-            }
-
-            @Override
-            public boolean onFaceFrame(Bitmap faceFrame, FaceDetector.Face[] faces) {
-                return false;
+            public void onClick(View v) {
+                switchCamera();
             }
         });
-
-        faceDetectView.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                    startDetect(null);
-                } else if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this, Manifest.permission.CAMERA)) {
-                    ConfirmationDialogFragment.newInstance(R.string.camera_permission_confirmation,
-                            new String[]{Manifest.permission.CAMERA},
-                            REQUEST_CAMERA_PERMISSION,
-                            R.string.camera_permission_not_granted)
-                            .show(getSupportFragmentManager(), FRAGMENT_DIALOG);
-                } else {
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
-                }
-            }
-        },1000);
     }
 
-    private static final int REQUEST_CAMERA_PERMISSION = 1;
-    private static final String FRAGMENT_DIALOG = "dialog";
+    private boolean canSwitchCameras() {
+        return frontFotoapparat.isAvailable() == backFotoapparat.isAvailable();
+    }
 
+    private Fotoapparat createFotoapparat(LensPosition position) {
+        return Fotoapparat
+                .with(this)
+                .into(cameraView)
+                .lensPosition(lensPosition(position))
+                .frameProcessor(
+                        FaceDetectorProcessor.with(this)
+                                .listener(new FaceDetectorProcessor.OnFacesDetectedListener() {
+                                    @Override
+                                    public void onFacesDetected(List<Rectangle> faces) {
+                                        Log.d("&&&", "Detected faces: " + faces.size());
 
-    public void startDetect(View view) {
-        if (!faceDetectView.isHasInit()) {
-            //必须是在view可见后进行初始化
-            faceDetectView.initView();
-            faceDetectView.initCamera();
-            faceDetectView.getDetectConfig().CameraType = Camera.CameraInfo.CAMERA_FACING_FRONT;
-            faceDetectView.getDetectConfig().EnableFaceDetect = true;
-            faceDetectView.getDetectConfig().MinDetectTime = 100;
-            faceDetectView.getDetectConfig().Simple = 1f;//图片检测时的压缩取样率，0~1，越小检测越流畅
-            faceDetectView.getDetectConfig().MaxDetectTime = 2000;//进入智能休眠检测，以2秒一次的这个速度检测
-            faceDetectView.getDetectConfig().EnableIdleSleepOption = true;//启用智能休眠检测机制
-            faceDetectView.getDetectConfig().IdleSleepOptionJudgeTime = 1000 * 10;//1分钟内没有检测到人脸，进入智能休眠检测
-            faceDetectView.getDetectConfig().DETECT_FACE_NUM = 1;
+                                        rectanglesView.setRectangles(faces);
+                                    }
+                                })
+                                .build()
+                )
+                .logger(loggers(
+                        logcat(),
+                        fileLogger(this)
+                ))
+                .build();
+    }
+
+    private void switchCamera() {
+        if (fotoapparatSwitcher.getCurrentFotoapparat() == frontFotoapparat) {
+            fotoapparatSwitcher.switchTo(backFotoapparat);
+        } else {
+            fotoapparatSwitcher.switchTo(frontFotoapparat);
         }
-        faceDetectView.startCameraPreview();
-    }
-
-    public void endDetect(View view) {
-        faceDetectView.stopCameraPreview();
-        faceDetectView.getFaceRectView().clearBorder();
     }
 
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        endDetect(null);
-    }
-
-    public static class ConfirmationDialogFragment extends DialogFragment {
-        private static final String ARG_MESSAGE = "message";
-        private static final String ARG_PERMISSIONS = "permissions";
-        private static final String ARG_REQUEST_CODE = "request_code";
-        private static final String ARG_NOT_GRANTED_MESSAGE = "not_granted_message";
-
-        public static ConfirmationDialogFragment newInstance(@StringRes int message,
-                                                             String[] permissions, int requestCode, @StringRes int notGrantedMessage) {
-            ConfirmationDialogFragment fragment = new ConfirmationDialogFragment();
-            Bundle args = new Bundle();
-            args.putInt(ARG_MESSAGE, message);
-            args.putStringArray(ARG_PERMISSIONS, permissions);
-            args.putInt(ARG_REQUEST_CODE, requestCode);
-            args.putInt(ARG_NOT_GRANTED_MESSAGE, notGrantedMessage);
-            fragment.setArguments(args);
-            return fragment;
+    protected void onStart() {
+        super.onStart();
+        if (hasCameraPermission) {
+            fotoapparatSwitcher.start();
         }
     }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (hasCameraPermission) {
+            fotoapparatSwitcher.stop();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (permissionsDelegate.resultGranted(requestCode, permissions, grantResults)) {
+            fotoapparatSwitcher.start();
+            cameraView.setVisibility(View.VISIBLE);
+        }
+    }
+
 }
