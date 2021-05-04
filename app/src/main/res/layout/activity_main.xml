@@ -7,26 +7,31 @@
     android:orientation="vertical"
     tools:context=".MainActivity">
 
-    <com.bifan.detectlib.FaceDetectView
-        android:id="@+id/faceDetectView"
-        android:layout_width="250dp"
-        android:layout_height="250dp"
+    <RelativeLayout
+        android:layout_width="260dp"
+        android:layout_height="260dp"
         android:layout_centerHorizontal="true"
-        android:layout_marginTop="100dp"
-        android:background="#aaaaaaaa" />
+        android:layout_marginTop="50dp">
 
-    <TextView
-        android:id="@+id/tvName"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignLeft="@id/faceDetectView"
-        android:layout_alignBottom="@id/faceDetectView"
-        android:layout_marginLeft="20dp"
-        android:layout_marginBottom="20dp"
-        android:background="#33333333"
-        android:padding="2dp"
-        android:text="梁增国"
-        android:textColor="@android:color/white"
-        android:textSize="16sp" />
+        <TextureView
+            android:id="@+id/texture_preview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <com.example.widget.FaceRectView
+            android:id="@+id/face_rect_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentBottom="true"
+            android:layout_marginLeft="10dp"
+            android:layout_marginBottom="10dp"
+            android:background="@android:color/darker_gray"
+            android:text="lzg" />
+    </RelativeLayout>
 
 </RelativeLayout>

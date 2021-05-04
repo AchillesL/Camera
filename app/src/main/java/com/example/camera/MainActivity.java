@@ -1,111 +1,290 @@
 package com.example.camera;
 
 import android.Manifest;
-import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
+import android.content.pm.ApplicationInfo;
+import android.graphics.Point;
 import android.hardware.Camera;
-import android.media.FaceDetector;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.View;
+import android.view.ViewTreeObserver;
 
-import androidx.annotation.StringRes;
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import androidx.fragment.app.DialogFragment;
 
-import com.bifan.detectlib.FaceDetectTextureView;
-import com.bifan.detectlib.FaceDetectView;
+import com.arcsoft.face.ErrorInfo;
+import com.arcsoft.face.FaceEngine;
+import com.arcsoft.face.FaceInfo;
+import com.arcsoft.face.VersionInfo;
+import com.arcsoft.face.enums.DetectFaceOrientPriority;
+import com.arcsoft.face.enums.DetectMode;
+import com.example.utils.Constants;
+import com.example.utils.SharePreferenceUtils;
+import com.example.utils.camera.CameraHelper;
+import com.example.utils.camera.CameraListener;
+import com.example.utils.face.DrawHelper;
+import com.example.utils.face.DrawInfo;
+import com.example.utils.face.RecognizeColor;
+import com.example.widget.FaceRectView;
 
-public class MainActivity extends AppCompatActivity {
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
-    private FaceDetectView faceDetectView;
+public class MainActivity extends BaseActivity implements ViewTreeObserver.OnGlobalLayoutListener {
+
+    private static final String TAG = "MainActivity";
+    private static final int ACTION_REQUEST_PERMISSIONS = 0x001;
+
+    private static final String[] NEEDED_PERMISSIONS = new String[]{
+            Manifest.permission.CAMERA,
+            Manifest.permission.READ_PHONE_STATE
+    };
+
+    boolean libraryExists = true;
+    private static final String[] LIBRARIES = new String[]{
+            // 人脸相关
+            "libarcsoft_face_engine.so",
+            "libarcsoft_face.so",
+            // 图像库相关
+            "libarcsoft_image_util.so",
+    };
+
+    private CameraHelper cameraHelper;
+    private DrawHelper drawHelper;
+    private Camera.Size previewSize;
+    private Integer rgbCameraId = Camera.CameraInfo.CAMERA_FACING_FRONT;
+    private FaceEngine faceEngine;
+    private int afCode = -1;
+    private int processMask = 0;
+
+    private View previewView;
+    private FaceRectView faceRectView;
+
+    private boolean enableFaceDetective = true;
+    private int faceDetectiveGapTime = 500;
+
+    private Handler handler = new Handler() {
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            enableFaceDetective = !enableFaceDetective;
+            handler.sendEmptyMessageDelayed(0, faceDetectiveGapTime);
+            super.handleMessage(msg);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        faceDetectView = findViewById(R.id.faceDetectView);
 
-        faceDetectView.setFramePreViewListener(new FaceDetectTextureView.IFramePreViewListener() {
+        checkFaceEngineFileExist();
+        activeEngine();
+        initView();
+    }
+
+    private void initView() {
+        previewView = findViewById(R.id.texture_preview);
+        faceRectView = findViewById(R.id.face_rect_view);
+        previewView.getViewTreeObserver().addOnGlobalLayoutListener(this);
+    }
+
+    private void initEngine() {
+        faceEngine = new FaceEngine();
+        afCode = faceEngine.init(this, DetectMode.ASF_DETECT_MODE_VIDEO, DetectFaceOrientPriority.ASF_OP_ALL_OUT,
+                32, 1, FaceEngine.ASF_FACE_DETECT);
+        Log.i(TAG, "initEngine:  init: " + afCode);
+        if (afCode != ErrorInfo.MOK) {
+            showToast(getString(R.string.init_failed, afCode));
+        }
+    }
+
+    private void initCamera() {
+        DisplayMetrics metrics = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(metrics);
+
+        CameraListener cameraListener = new CameraListener() {
             @Override
-            public boolean onFrame(Bitmap eachFrame) {
-
-                return false;
+            public void onCameraOpened(Camera camera, int cameraId, int displayOrientation, boolean isMirror) {
+                Log.i(TAG, "onCameraOpened: " + cameraId + "  " + displayOrientation + " " + isMirror);
+                previewSize = camera.getParameters().getPreviewSize();
+                drawHelper = new DrawHelper(previewSize.width, previewSize.height, previewView.getWidth(), previewView.getHeight(), displayOrientation
+                        , cameraId, isMirror, false, false);
             }
 
-            @Override
-            public boolean onFaceFrame(Bitmap faceFrame, FaceDetector.Face[] faces) {
-                return false;
-            }
-        });
 
-        faceDetectView.postDelayed(new Runnable() {
             @Override
-            public void run() {
-                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                    startDetect(null);
-                } else if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this, Manifest.permission.CAMERA)) {
-                    ConfirmationDialogFragment.newInstance(R.string.camera_permission_confirmation,
-                            new String[]{Manifest.permission.CAMERA},
-                            REQUEST_CAMERA_PERMISSION,
-                            R.string.camera_permission_not_granted)
-                            .show(getSupportFragmentManager(), FRAGMENT_DIALOG);
+            public void onPreview(byte[] nv21, Camera camera) {
+
+                if (faceRectView != null) {
+                    faceRectView.clearFaceInfo();
+                }
+                List<FaceInfo> faceInfoList = new ArrayList<>();
+                if (!enableFaceDetective) {
+                    faceRectView.clearFaceInfo();
+                    return;
+                }
+                int code = faceEngine.detectFaces(nv21, previewSize.width, previewSize.height, FaceEngine.CP_PAF_NV21, faceInfoList);
+                if (code == ErrorInfo.MOK && faceInfoList.size() > 0) {
+                    code = faceEngine.process(nv21, previewSize.width, previewSize.height, FaceEngine.CP_PAF_NV21, faceInfoList, processMask);
+                    if (code != ErrorInfo.MOK) {
+                        return;
+                    }
                 } else {
-                    ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+                    return;
+                }
+
+                if (faceRectView != null && drawHelper != null) {
+                    List<DrawInfo> drawInfoList = new ArrayList<>();
+                    for (int i = 0; i < faceInfoList.size(); i++) {
+                        drawInfoList.add(new DrawInfo(drawHelper.adjustRect(faceInfoList.get(i).getRect()), 0, 0, 0, RecognizeColor.COLOR_SUCCESS, null));
+                    }
+                    drawHelper.draw(faceRectView, drawInfoList);
                 }
             }
-        },1000);
+
+            @Override
+            public void onCameraClosed() {
+                Log.i(TAG, "onCameraClosed: ");
+            }
+
+            @Override
+            public void onCameraError(Exception e) {
+                Log.i(TAG, "onCameraError: " + e.getMessage());
+            }
+
+            @Override
+            public void onCameraConfigurationChanged(int cameraID, int displayOrientation) {
+                if (drawHelper != null) {
+                    drawHelper.setCameraDisplayOrientation(displayOrientation);
+                }
+                Log.i(TAG, "onCameraConfigurationChanged: " + cameraID + "  " + displayOrientation);
+            }
+        };
+        cameraHelper = new CameraHelper.Builder()
+                .previewViewSize(new Point(previewView.getMeasuredWidth(), previewView.getMeasuredHeight()))
+                .rotation(getWindowManager().getDefaultDisplay().getRotation())
+                .specificCameraId(rgbCameraId != null ? rgbCameraId : Camera.CameraInfo.CAMERA_FACING_FRONT)
+                .isMirror(false)
+                .previewOn(previewView)
+                .cameraListener(cameraListener)
+                .build();
+        cameraHelper.init();
+        cameraHelper.start();
+        handler.sendEmptyMessageDelayed(0,faceDetectiveGapTime);
     }
 
-    private static final int REQUEST_CAMERA_PERMISSION = 1;
-    private static final String FRAGMENT_DIALOG = "dialog";
 
-
-    public void startDetect(View view) {
-        if (!faceDetectView.isHasInit()) {
-            //必须是在view可见后进行初始化
-            faceDetectView.initView();
-            faceDetectView.initCamera();
-            faceDetectView.getDetectConfig().CameraType = Camera.CameraInfo.CAMERA_FACING_FRONT;
-            faceDetectView.getDetectConfig().EnableFaceDetect = true;
-            faceDetectView.getDetectConfig().MinDetectTime = 100;
-            faceDetectView.getDetectConfig().Simple = 1f;//图片检测时的压缩取样率，0~1，越小检测越流畅
-            faceDetectView.getDetectConfig().MaxDetectTime = 2000;//进入智能休眠检测，以2秒一次的这个速度检测
-            faceDetectView.getDetectConfig().EnableIdleSleepOption = true;//启用智能休眠检测机制
-            faceDetectView.getDetectConfig().IdleSleepOptionJudgeTime = 1000 * 10;//1分钟内没有检测到人脸，进入智能休眠检测
-            faceDetectView.getDetectConfig().DETECT_FACE_NUM = 1;
+    private void checkFaceEngineFileExist() {
+        libraryExists = checkSoFile(LIBRARIES);
+        ApplicationInfo applicationInfo = getApplicationInfo();
+        Log.i(TAG, "onCreate: " + applicationInfo.nativeLibraryDir);
+        if (!libraryExists) {
+            showToast(getString(R.string.library_not_found));
+        } else {
+            VersionInfo versionInfo = new VersionInfo();
+            int code = FaceEngine.getVersion(versionInfo);
+            Log.i(TAG, "onCreate: getVersion, code is: " + code + ", versionInfo is: " + versionInfo);
         }
-        faceDetectView.startCameraPreview();
     }
 
-    public void endDetect(View view) {
-        faceDetectView.stopCameraPreview();
-        faceDetectView.getFaceRectView().clearBorder();
+    /**
+     * 检查能否找到动态链接库，如果找不到，请修改工程配置
+     *
+     * @param libraries 需要的动态链接库
+     * @return 动态库是否存在
+     */
+    private boolean checkSoFile(String[] libraries) {
+        File dir = new File(getApplicationInfo().nativeLibraryDir);
+        File[] files = dir.listFiles();
+        if (files == null || files.length == 0) {
+            return false;
+        }
+        List<String> libraryNameList = new ArrayList<>();
+        for (File file : files) {
+            libraryNameList.add(file.getName());
+        }
+        boolean exists = true;
+        for (String library : libraries) {
+            exists &= libraryNameList.contains(library);
+        }
+        return exists;
     }
+
+    public void activeEngine() {
+        if (!libraryExists) {
+            showToast(getString(R.string.library_not_found));
+            return;
+        }
+        if (!checkPermissions(NEEDED_PERMISSIONS)) {
+            ActivityCompat.requestPermissions(this, NEEDED_PERMISSIONS, ACTION_REQUEST_PERMISSIONS);
+            return;
+        }
+
+        /*若本地无激活成功的记录，需要激活*/
+        if (!SharePreferenceUtils.getBoolean(MainActivity.this, AppUtils.IS_ACTIVE_ONLINE, false)) {
+            int activeCode = FaceEngine.activeOnline(MainActivity.this, Constants.APP_ID, Constants.SDK_KEY);
+            if (activeCode == ErrorInfo.MOK) {
+                showToast(getString(R.string.active_success));
+                SharePreferenceUtils.putBoolean(MainActivity.this, AppUtils.IS_ACTIVE_ONLINE, true);
+            } else if (activeCode == ErrorInfo.MERR_ASF_ALREADY_ACTIVATED) {
+                showToast(getString(R.string.already_activated));
+                SharePreferenceUtils.putBoolean(MainActivity.this, AppUtils.IS_ACTIVE_ONLINE, true);
+            } else {
+                showToast(getString(R.string.active_failed, activeCode));
+            }
+        }
+    }
+
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        endDetect(null);
+        if (cameraHelper != null) {
+            cameraHelper.release();
+        }
+        handler.removeCallbacksAndMessages(null);
     }
 
-    public static class ConfirmationDialogFragment extends DialogFragment {
-        private static final String ARG_MESSAGE = "message";
-        private static final String ARG_PERMISSIONS = "permissions";
-        private static final String ARG_REQUEST_CODE = "request_code";
-        private static final String ARG_NOT_GRANTED_MESSAGE = "not_granted_message";
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (cameraHelper != null && cameraHelper.isStopped()) {
+            cameraHelper.start();
+        }
+    }
 
-        public static ConfirmationDialogFragment newInstance(@StringRes int message,
-                                                             String[] permissions, int requestCode, @StringRes int notGrantedMessage) {
-            ConfirmationDialogFragment fragment = new ConfirmationDialogFragment();
-            Bundle args = new Bundle();
-            args.putInt(ARG_MESSAGE, message);
-            args.putStringArray(ARG_PERMISSIONS, permissions);
-            args.putInt(ARG_REQUEST_CODE, requestCode);
-            args.putInt(ARG_NOT_GRANTED_MESSAGE, notGrantedMessage);
-            fragment.setArguments(args);
-            return fragment;
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (cameraHelper != null) {
+            cameraHelper.stop();
+        }
+
+    }
+
+    @Override
+    void afterRequestPermission(int requestCode, boolean isAllGranted) {
+        if (requestCode == ACTION_REQUEST_PERMISSIONS) {
+            if (isAllGranted) {
+                activeEngine();
+            } else {
+                showToast(getString(R.string.permission_denied));
+            }
+        }
+    }
+
+    @Override
+    public void onGlobalLayout() {
+        previewView.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+        if (!checkPermissions(NEEDED_PERMISSIONS)) {
+            ActivityCompat.requestPermissions(this, NEEDED_PERMISSIONS, ACTION_REQUEST_PERMISSIONS);
+        } else {
+            initEngine();
+            initCamera();
         }
     }
 }
