@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * 打开两个相机的辅助类，和{@link CameraListener}共同使用，获取nv21数据等操作
- *
+ * <p>
  * 由于IR摄像头和RGB摄像头的默认分辨率可能不同，为了让两者相同，该类做了以下操作：
  * 1. 获取两者支持的分辨率列表到到静态变量{@link DualCameraHelper#rgbSupportedPreviewSizes}及{@link DualCameraHelper#irSupportedPreviewSizes}中，
  * 2. 使用{@link DualCameraHelper#getCommonSupportedPreviewSize()}方法取分辨率的交集，
@@ -236,9 +236,10 @@ public class DualCameraHelper implements Camera.PreviewCallback {
 
     /**
      * 获取候选分辨率列表中最接近预览view大小的分辨率
-     * @param sizes 支持的分辨率
-     * @param previewViewSize   预览view的大小
-     * @return  最接近预览view大小的分辨率
+     *
+     * @param sizes           支持的分辨率
+     * @param previewViewSize 预览view的大小
+     * @return 最接近预览view大小的分辨率
      */
     private Camera.Size getBestSupportedSize(List<Camera.Size> sizes, Point previewViewSize) {
         if (sizes == null || sizes.size() == 0) {

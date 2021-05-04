@@ -329,6 +329,7 @@ public class CameraHelper implements Camera.PreviewCallback {
             }
         }
     }
+
     public boolean switchCamera() {
         if (Camera.getNumberOfCameras() < 2) {
             return false;

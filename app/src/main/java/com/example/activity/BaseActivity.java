@@ -1,4 +1,4 @@
-package com.example.camera;
+package com.example.activity;
 
 import android.content.pm.PackageManager;
 import android.widget.Toast;
@@ -46,8 +46,10 @@ public abstract class BaseActivity extends AppCompatActivity {
     protected void showToast(String s) {
         Toast.makeText(getApplicationContext(), s, Toast.LENGTH_SHORT).show();
     }
+
     protected void showLongToast(String s) {
         Toast.makeText(getApplicationContext(), s, Toast.LENGTH_LONG).show();
     }
 
 }
+

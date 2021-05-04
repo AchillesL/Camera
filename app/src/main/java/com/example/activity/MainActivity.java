@@ -1,4 +1,4 @@
-package com.example.camera;
+package com.example.activity;
 
 import android.Manifest;
 import android.content.pm.ApplicationInfo;
@@ -21,6 +21,8 @@ import com.arcsoft.face.FaceInfo;
 import com.arcsoft.face.VersionInfo;
 import com.arcsoft.face.enums.DetectFaceOrientPriority;
 import com.arcsoft.face.enums.DetectMode;
+import com.example.camera.AppUtils;
+import com.example.camera.R;
 import com.example.utils.Constants;
 import com.example.utils.SharePreferenceUtils;
 import com.example.utils.camera.CameraHelper;
@@ -174,7 +176,7 @@ public class MainActivity extends BaseActivity implements ViewTreeObserver.OnGlo
                 .build();
         cameraHelper.init();
         cameraHelper.start();
-        handler.sendEmptyMessageDelayed(0,faceDetectiveGapTime);
+        handler.sendEmptyMessageDelayed(0, faceDetectiveGapTime);
     }
 
 
