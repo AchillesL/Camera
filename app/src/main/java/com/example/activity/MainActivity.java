@@ -15,6 +15,7 @@ import android.view.ViewTreeObserver;
 import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 
+import com.arcsoft.face.ActiveFileInfo;
 import com.arcsoft.face.ErrorInfo;
 import com.arcsoft.face.FaceEngine;
 import com.arcsoft.face.FaceInfo;
@@ -84,7 +85,6 @@ public class MainActivity extends BaseActivity implements ViewTreeObserver.OnGlo
         setContentView(R.layout.activity_main);
 
         checkFaceEngineFileExist();
-        activeEngine();
         initView();
     }
 
@@ -227,17 +227,20 @@ public class MainActivity extends BaseActivity implements ViewTreeObserver.OnGlo
         }
 
         /*若本地无激活成功的记录，需要激活*/
-        if (!SharePreferenceUtils.getBoolean(MainActivity.this, AppUtils.IS_ACTIVE_ONLINE, false)) {
-            int activeCode = FaceEngine.activeOnline(MainActivity.this, Constants.APP_ID, Constants.SDK_KEY);
-            if (activeCode == ErrorInfo.MOK) {
-                showToast(getString(R.string.active_success));
-                SharePreferenceUtils.putBoolean(MainActivity.this, AppUtils.IS_ACTIVE_ONLINE, true);
-            } else if (activeCode == ErrorInfo.MERR_ASF_ALREADY_ACTIVATED) {
-                showToast(getString(R.string.already_activated));
-                SharePreferenceUtils.putBoolean(MainActivity.this, AppUtils.IS_ACTIVE_ONLINE, true);
-            } else {
-                showToast(getString(R.string.active_failed, activeCode));
-            }
+        ActiveFileInfo activeFileInfo = new ActiveFileInfo();
+        if (FaceEngine.getActiveFileInfo(this,activeFileInfo) == ErrorInfo.MOK) {
+            return;
+        }
+
+        int activeCode = FaceEngine.activeOnline(MainActivity.this, Constants.APP_ID, Constants.SDK_KEY);
+        if (activeCode == ErrorInfo.MOK) {
+            showToast(getString(R.string.active_success));
+            SharePreferenceUtils.putBoolean(MainActivity.this, AppUtils.IS_ACTIVE_ONLINE, true);
+        } else if (activeCode == ErrorInfo.MERR_ASF_ALREADY_ACTIVATED) {
+            showToast(getString(R.string.already_activated));
+            SharePreferenceUtils.putBoolean(MainActivity.this, AppUtils.IS_ACTIVE_ONLINE, true);
+        } else {
+            showToast(getString(R.string.active_failed, activeCode));
         }
     }
 
@@ -265,7 +268,6 @@ public class MainActivity extends BaseActivity implements ViewTreeObserver.OnGlo
         if (cameraHelper != null) {
             cameraHelper.stop();
         }
-
     }
 
     @Override
@@ -273,6 +275,8 @@ public class MainActivity extends BaseActivity implements ViewTreeObserver.OnGlo
         if (requestCode == ACTION_REQUEST_PERMISSIONS) {
             if (isAllGranted) {
                 activeEngine();
+                initEngine();
+                initCamera();
             } else {
                 showToast(getString(R.string.permission_denied));
             }
@@ -285,6 +289,7 @@ public class MainActivity extends BaseActivity implements ViewTreeObserver.OnGlo
         if (!checkPermissions(NEEDED_PERMISSIONS)) {
             ActivityCompat.requestPermissions(this, NEEDED_PERMISSIONS, ACTION_REQUEST_PERMISSIONS);
         } else {
+            activeEngine();
             initEngine();
             initCamera();
         }
